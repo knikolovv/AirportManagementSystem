@@ -1,12 +1,12 @@
 package AirportManagementSystem.Flights;
 
 public enum FlightType {
-    CIVIL(3),
-    MILITARY(3),
-    CARGO(4),
-    EMERGENCY(2);
+    CIVIL(3000),
+    MILITARY(3000),
+    CARGO(4000),
+    EMERGENCY(2000);
 
-    private int processTime;
+    private final int processTime;
 
     FlightType(int processTime) {
         this.processTime = processTime;

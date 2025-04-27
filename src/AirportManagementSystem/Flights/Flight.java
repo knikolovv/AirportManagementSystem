@@ -2,89 +2,131 @@ package AirportManagementSystem.Flights;
 
 import AirportManagementSystem.AirTrafficControl;
 import AirportManagementSystem.Airports.Airport;
+import AirportManagementSystem.Logger.FlightLogger;
 import AirportManagementSystem.Runways.Runway;
 import AirportManagementSystem.Runways.RunwayType;
 
-import java.util.List;
-import java.util.UUID;
+import java.util.Random;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 
 public class Flight implements Runnable {
-    private UUID id;
+    private final String name;
     private FlightType flightType;
     private Airport airport;
-    private AirTrafficControl airTrafficControl;
+    private final AirTrafficControl airTrafficControl;
+    private final AtomicBoolean hasLanded = new AtomicBoolean(false);
 
-    public Flight(FlightType flightType, Airport airport, AirTrafficControl airTrafficControl) {
-        this.id = UUID.randomUUID();
+    public Flight(FlightType flightType, AirTrafficControl airTrafficControl) {
         this.flightType = flightType;
-        this.airport = airport;
+        this.airport = airTrafficControl.pickAirportForFlight(this);
+        this.name = airport.getName().substring(0, 3) + new Random().nextInt(1, 500);
         this.airTrafficControl = airTrafficControl;
     }
 
     @Override
     public void run() {
-        System.out.println("Flight #" + this.id + " type " +  this.flightType +  " is looking for free runway at " + this.airport.getName());
-        Runway runway = airport.getAvailableCompatibleRunway(this);
-        if (runway == null) {
-            boolean accepted = airport.canAcceptFlight(this);
-            if (!accepted) {
-                System.out.println("Flight #" + this.id + " is being transferred to another airport");
-                Airport newAirport = airTrafficControl.transferToAnotherAirport(this);
-                if (newAirport != null) {
-                    this.setAirport(newAirport);
-                    airTrafficControl.getExecutorService().submit(this);
-                }
-                return;
-            }
-            else {
-                System.out.println("Flight " + this.id + " queued at " + this.airport.getName());
+        FlightLogger.logActivity(this.flightType + " Flight #" + this.name + " took off" + " and is looking for a free runway at " + this.airport.getName());
+        airTrafficControl.processFlight(this);
 
-            }
-            return;
-        }
-
-        if (runway.canUse()) {
-            System.out.println("Flight with id " + this.id +" is using runway " + runway.getRunwayType() + " on " + airport.getName());
+        while (!hasLanded.get()) {
             try {
-                Thread.sleep(this.flightType.getProcessTime());
+                if (tryToLand()) {
+                    landSuccessfully();
+                    break;
+                }
+                Thread.sleep(100);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                return;
+                break;
             }
-
-            System.out.println("Flight #" + this.id + " landed successfully and freed the runway");
-            runway.free();
-            airTrafficControl.completeFlight();
-        } else {
-            airport.queueFlight(this);
         }
     }
 
-    public boolean isCompatibleWithRunway(RunwayType type) {
+    private void landSuccessfully() {
+        hasLanded.set(true);
+        airport.getFlightsQueue().remove(this);
+        airTrafficControl.incrementLandedFlights();
+    }
+
+    public boolean tryToLand() {
+        Runway runway = waitForCompatibleRunway();
+        if (runway == null) {
+            return false;
+        }
+
+        landFlight(runway);
+        return true;
+    }
+
+    public void landFlight(Runway runway) {
+        if (this.flightType == FlightType.EMERGENCY) {
+            this.airport.getEmergencyLock().writeLock().lock();
+            FlightLogger.logActivity("Emergency Flight #" + this.name + " is landing with priority!");
+        } else {
+            this.airport.getEmergencyLock().readLock().lock();
+        }
+
+        try {
+            FlightLogger.logActivity("Flight with #" + this.name + " is using " + runway + " on " + this.airport.getName() + ".");
+            Thread.sleep(this.flightType.getProcessTime());
+            FlightLogger.logActivity("Flight #" + this.name + " landed successfully on " + runway + " and freed it.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            runway.free();
+            if (this.flightType == FlightType.EMERGENCY) {
+                this.airport.getEmergencyLock().writeLock().unlock();
+            } else {
+                this.airport.getEmergencyLock().readLock().unlock();
+            }
+        }
+    }
+
+    private Runway waitForCompatibleRunway() {
+        Runway runway = getCompatibleRunway();
+        if (runway != null && runway.tryUse()) {
+            return runway;
+        }
+        return null;
+    }
+
+    public synchronized Runway getCompatibleRunway() {
+        return this.airport.getRunways().stream()
+                .filter(runway -> isCompatibleWithRunwayType(runway.getRunwayType()) && runway.isAvailable())
+                .findFirst()
+                .orElse(null);
+    }
+
+    public boolean isCompatibleWithRunwayType(RunwayType type) {
         return switch (this.flightType) {
-            case CARGO -> type == RunwayType.CIVIL;
+            case CARGO, CIVIL -> type == RunwayType.CIVIL;
             case MILITARY -> type == RunwayType.MILITARY;
-            case CIVIL -> type == RunwayType.CIVIL;
             case EMERGENCY -> type == RunwayType.EMERGENCY;
         };
     }
-    public boolean isCompatibleWithAnotherAirportRunway(List<Runway> runways) {
-        for (Runway runway : runways) {
-            if (isCompatibleWithRunway(runway.getRunwayType())) {
-                return true;
-            }
+
+    public boolean isCompatibleWithAirport(Airport airport) {
+        boolean compatible = airport.getRunways().stream()
+                .anyMatch(runway -> isCompatibleWithRunwayType(runway.getRunwayType()));
+
+        if (!compatible) {
+            FlightLogger.logActivity("Flight #" + this.name + " is not compatible with " +
+                                     airport.getName() + "'s runways");
         }
-        System.out.println("The flight is not compatible with any runway");
-        return false;
+        return compatible;
     }
 
-    public UUID getId() {
-        return id;
+    public String getName() {
+        return name;
     }
 
     public FlightType getFlightType() {
         return flightType;
+    }
+
+    public void setFlightType(FlightType type) {
+        this.flightType = type;
     }
 
     public Airport getAirport() {

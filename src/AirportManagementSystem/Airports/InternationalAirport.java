@@ -15,10 +15,10 @@ public class InternationalAirport extends Airport {
     @Override
     protected List<Runway> setRunwaysPerAirport() {
         List<Runway> runways = new ArrayList<>();
-        runways.add(new Runway(RunwayType.CIVIL));
-        runways.add(new Runway(RunwayType.CIVIL));
-        runways.add(new Runway(RunwayType.EMERGENCY));
-        runways.add(new Runway(RunwayType.MILITARY));
+        runways.add(new Runway(RunwayType.CIVIL,1));
+        runways.add(new Runway(RunwayType.CIVIL,2));
+        runways.add(new Runway(RunwayType.EMERGENCY,1));
+        runways.add(new Runway(RunwayType.MILITARY,1));
         return runways;
     }
 }
