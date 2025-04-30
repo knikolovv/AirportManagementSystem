@@ -42,9 +42,9 @@ public class AirTrafficControl {
                     airport.acceptFlight(flight);
                     return;
                 }
-                FlightLogger.logActivity("Flight #" + flight.getName() + " cannot be redirected to another airport!");
             }
         }
+        FlightLogger.logActivity("Flight #" + flight.getName() + " cannot be redirected to another airport!");
     }
 
     public Airport pickAirportForFlight(Flight flight) {

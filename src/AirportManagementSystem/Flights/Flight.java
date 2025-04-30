@@ -45,16 +45,22 @@ public class Flight implements Runnable {
 
     private void landSuccessfully() {
         hasLanded.set(true);
-        airport.getFlightsQueue().remove(this);
         airTrafficControl.incrementLandedFlights();
     }
 
     public boolean tryToLand() {
+        if (this.flightType != FlightType.EMERGENCY) {
+            if (this.airport.getFlightsQueue().peek() != this) {
+                return false;
+            }
+        }
+
         Runway runway = waitForCompatibleRunway();
         if (runway == null) {
             return false;
         }
 
+        airport.getFlightsQueue().remove(this);
         landFlight(runway);
         return true;
     }
