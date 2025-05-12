@@ -6,19 +6,32 @@ import AirportManagementSystem.Airports.InternationalAirport;
 import AirportManagementSystem.Airports.MilitaryAirport;
 import AirportManagementSystem.Flights.Flight;
 import AirportManagementSystem.Logger.FlightLogger;
+import AirportManagementSystem.Runways.Runway;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class AirTrafficControl {
     private final List<Airport> airports;
-    private final AtomicInteger trackedFlights = new AtomicInteger(0);
+    private final AtomicInteger numberOfTrackedFlights = new AtomicInteger(0);
     private final AtomicInteger flightsLanded = new AtomicInteger(0);
-
+    private final Map<Flight, Future<?>> trackedFlights = new ConcurrentHashMap<>();
 
     public AirTrafficControl(List<Airport> airports) {
         this.airports = airports;
+    }
+
+    public void notifyAirportOfFlightEmergency(Flight flight) {
+        FlightLogger.logActivity(flight.getName() + " declared emergency!");
+        for (Runway runway : flight.getAirport().getRunways()) {
+            if (runway.getLandingFlight() != null) {
+                trackedFlights.get(runway.getLandingFlight()).cancel(true);
+            }
+        }
     }
 
     public void processFlight(Flight flight) {
@@ -36,10 +49,8 @@ public class AirTrafficControl {
         for (Airport airport : airports) {
             if (!airport.equals(flight.getAirport())) {
                 FlightLogger.logActivity("Flight #" + flight.getName() + " is checking for available runways at " + airport.getName());
-                if (flight.isCompatibleWithAirport(airport) && airport.hasCapacity()) {
+                if (airport.tryAcceptTransferredFlight(flight)) {
                     flight.setAirport(airport);
-                    FlightLogger.logActivity("Changed flight #" + flight.getName() + " to airport " + airport.getName());
-                    airport.acceptFlight(flight);
                     return;
                 }
             }
@@ -65,19 +76,23 @@ public class AirTrafficControl {
         return compatibleAirports.get(new Random().nextInt(compatibleAirports.size()));
     }
 
-    public AtomicInteger getTrackedFlights() {
-        return trackedFlights;
+    public void registerFlight(Flight flight, Future<?> future) {
+        this.trackedFlights.put(flight, future);
+    }
+
+    public int getNumberOfTrackedFlights() {
+        return numberOfTrackedFlights.get();
     }
 
     public void incrementTrackedFlights() {
-        trackedFlights.getAndIncrement();
+        numberOfTrackedFlights.getAndIncrement();
     }
 
     public void incrementLandedFlights() {
         flightsLanded.getAndIncrement();
     }
 
-    public AtomicInteger getFlightsLanded() {
-        return flightsLanded;
+    public int getFlightsLanded() {
+        return flightsLanded.get();
     }
 }

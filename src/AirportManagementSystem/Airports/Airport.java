@@ -5,10 +5,10 @@ import AirportManagementSystem.Flights.FlightType;
 import AirportManagementSystem.Logger.FlightLogger;
 import AirportManagementSystem.Runways.Runway;
 
+import java.util.Deque;
 import java.util.List;
-import java.util.Queue;
-import java.util.Random;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 
@@ -16,28 +16,40 @@ public abstract class Airport {
     private final String name;
     private final List<Runway> runways;
     private final int maxCapacity;
-    private final Queue<Flight> flightsQueue;
+    private final Deque<Flight> flightsQueue;
     private final ReentrantReadWriteLock emergencyLock = new ReentrantReadWriteLock(true);
+    private final ReentrantLock acceptLock = new ReentrantLock();
 
     public Airport(String name, int maxCapacity) {
         this.name = name;
         this.maxCapacity = maxCapacity;
         this.runways = setRunwaysPerAirport();
-        this.flightsQueue = new ConcurrentLinkedQueue<>();
+        this.flightsQueue = new ConcurrentLinkedDeque<>();
     }
 
     public boolean hasCapacity() {
         return flightsQueue.size() < maxCapacity;
     }
 
+    public boolean tryAcceptTransferredFlight(Flight flight) {
+        acceptLock.lock();
+        try {
+            if (flight.isCompatibleWithAirport(this) && flightsQueue.size() < maxCapacity) {
+                acceptFlight(flight);
+                return true;
+            } else {
+                FlightLogger.logActivity("Airport " + getName() + " is full cannot accept flight #" + flight.getName());
+                return false;
+            }
+        } finally {
+            acceptLock.unlock();
+        }
+    }
+
     public void acceptFlight(Flight flight) {
         FlightLogger.logActivity("Flight #" + flight.getName() + " queued at " + this.name);
-        if (new Random().nextInt(0, 101) < 5) {
-            flight.setFlightType(FlightType.EMERGENCY);
-            FlightLogger.logActivity(flight.getName() + " declared emergency!");
-        }
         if (flight.getFlightType() == FlightType.EMERGENCY) {
-            if (emergencyLock.isWriteLocked() || getFlightsQueue().stream().anyMatch(fl -> fl.getFlightType() == FlightType.EMERGENCY)) {
+            if (emergencyLock.isWriteLocked()) {
                 FlightLogger.logActivity(this.name + " is currently handling emergency landing!");
                 flight.getAirportSystem().transferToAnotherAirport(flight);
                 return;
@@ -57,7 +69,7 @@ public abstract class Airport {
         return name;
     }
 
-    public Queue<Flight> getFlightsQueue() {
+    public Deque<Flight> getFlightsQueue() {
         return flightsQueue;
     }
 

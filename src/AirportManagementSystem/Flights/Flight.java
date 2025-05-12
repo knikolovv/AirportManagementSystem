@@ -16,6 +16,7 @@ public class Flight implements Runnable {
     private Airport airport;
     private final AirTrafficControl airTrafficControl;
     private final AtomicBoolean hasLanded = new AtomicBoolean(false);
+    private static final Random random = new Random();
 
     public Flight(FlightType flightType, AirTrafficControl airTrafficControl) {
         this.flightType = flightType;
@@ -27,7 +28,12 @@ public class Flight implements Runnable {
     @Override
     public void run() {
         FlightLogger.logActivity(this.flightType + " Flight #" + this.name + " took off" + " and is looking for a free runway at " + this.airport.getName());
-        airTrafficControl.processFlight(this);
+
+        if (random.nextInt(0, 101) < 5) {
+            this.setFlightType(FlightType.EMERGENCY);
+            this.airTrafficControl.notifyAirportOfFlightEmergency(this);
+        }
+        this.airTrafficControl.processFlight(this);
 
         while (!hasLanded.get()) {
             try {
@@ -37,8 +43,7 @@ public class Flight implements Runnable {
                 }
                 Thread.sleep(100);
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+                // Current landing interrupted, continue attempting to land
             }
         }
     }
@@ -49,10 +54,8 @@ public class Flight implements Runnable {
     }
 
     public boolean tryToLand() {
-        if (this.flightType != FlightType.EMERGENCY) {
-            if (this.airport.getFlightsQueue().peek() != this) {
-                return false;
-            }
+        if (this.flightType != FlightType.EMERGENCY && this.airport.getFlightsQueue().peek() != this) {
+            return false;
         }
 
         Runway runway = waitForCompatibleRunway();
@@ -61,11 +64,6 @@ public class Flight implements Runnable {
         }
 
         airport.getFlightsQueue().remove(this);
-        landFlight(runway);
-        return true;
-    }
-
-    public void landFlight(Runway runway) {
         if (this.flightType == FlightType.EMERGENCY) {
             this.airport.getEmergencyLock().writeLock().lock();
             FlightLogger.logActivity("Emergency Flight #" + this.name + " is landing with priority!");
@@ -78,7 +76,9 @@ public class Flight implements Runnable {
             Thread.sleep(this.flightType.getProcessTime());
             FlightLogger.logActivity("Flight #" + this.name + " landed successfully on " + runway + " and freed it.");
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            this.airport.getFlightsQueue().offerFirst(this);
+            FlightLogger.logActivity("The landing of flight #" + this.name + " was interrupted during emergency!");
+            return false;
         } finally {
             runway.free();
             if (this.flightType == FlightType.EMERGENCY) {
@@ -87,11 +87,12 @@ public class Flight implements Runnable {
                 this.airport.getEmergencyLock().readLock().unlock();
             }
         }
+        return true;
     }
 
     private Runway waitForCompatibleRunway() {
         Runway runway = getCompatibleRunway();
-        if (runway != null && runway.tryUse()) {
+        if (runway != null && runway.tryLand(this)) {
             return runway;
         }
         return null;

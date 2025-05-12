@@ -21,7 +21,7 @@ public class FlightLogger {
             logger.setUseParentHandlers(false);
             logger.setLevel(Level.INFO);
         } catch (IOException e) {
-            e.printStackTrace();
+            throw new RuntimeException("Could  not initialize the logger", e);
         }
     }
 
