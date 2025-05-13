@@ -34,7 +34,7 @@ public abstract class Airport {
     public boolean tryAcceptTransferredFlight(Flight flight) {
         acceptLock.lock();
         try {
-            if (flight.isCompatibleWithAirport(this) && flightsQueue.size() < maxCapacity) {
+            if (flight.isCompatibleWithAirport(this) && hasCapacity()) {
                 acceptFlight(flight);
                 return true;
             } else {
@@ -47,7 +47,6 @@ public abstract class Airport {
     }
 
     public void acceptFlight(Flight flight) {
-        FlightLogger.logActivity("Flight #" + flight.getName() + " queued at " + this.name);
         if (flight.getFlightType() == FlightType.EMERGENCY) {
             if (emergencyLock.isWriteLocked()) {
                 FlightLogger.logActivity(this.name + " is currently handling emergency landing!");
@@ -55,6 +54,7 @@ public abstract class Airport {
                 return;
             }
         }
+        FlightLogger.logActivity("Flight #" + flight.getName() + " queued at " + this.name);
         flightsQueue.offer(flight);
         flight.getAirportSystem().incrementTrackedFlights();
     }

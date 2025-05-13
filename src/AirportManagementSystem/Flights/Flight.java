@@ -15,13 +15,13 @@ public class Flight implements Runnable {
     private FlightType flightType;
     private Airport airport;
     private final AirTrafficControl airTrafficControl;
-    private final AtomicBoolean hasLanded = new AtomicBoolean(false);
+    private boolean hasLanded;
     private static final Random random = new Random();
 
     public Flight(FlightType flightType, AirTrafficControl airTrafficControl) {
         this.flightType = flightType;
         this.airport = airTrafficControl.pickAirportForFlight(this);
-        this.name = airport.getName().substring(0, 3) + new Random().nextInt(1, 500);
+        this.name = airport.getName().substring(0, 3) + random.nextInt(1, 500);
         this.airTrafficControl = airTrafficControl;
     }
 
@@ -35,7 +35,7 @@ public class Flight implements Runnable {
         }
         this.airTrafficControl.processFlight(this);
 
-        while (!hasLanded.get()) {
+        while (!hasLanded) {
             try {
                 if (tryToLand()) {
                     landSuccessfully();
@@ -49,7 +49,7 @@ public class Flight implements Runnable {
     }
 
     private void landSuccessfully() {
-        hasLanded.set(true);
+        hasLanded = true;
         airTrafficControl.incrementLandedFlights();
     }
 
@@ -98,7 +98,7 @@ public class Flight implements Runnable {
         return null;
     }
 
-    public synchronized Runway getCompatibleRunway() {
+    public Runway getCompatibleRunway() {
         return this.airport.getRunways().stream()
                 .filter(runway -> isCompatibleWithRunwayType(runway.getRunwayType()) && runway.isAvailable())
                 .findFirst()

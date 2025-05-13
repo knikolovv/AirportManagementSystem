@@ -5,6 +5,7 @@ import AirportManagementSystem.Airports.CivilAirport;
 import AirportManagementSystem.Airports.InternationalAirport;
 import AirportManagementSystem.Airports.MilitaryAirport;
 import AirportManagementSystem.Flights.Flight;
+import AirportManagementSystem.Flights.FlightType;
 import AirportManagementSystem.Logger.FlightLogger;
 import AirportManagementSystem.Runways.Runway;
 
@@ -28,7 +29,7 @@ public class AirTrafficControl {
     public void notifyAirportOfFlightEmergency(Flight flight) {
         FlightLogger.logActivity(flight.getName() + " declared emergency!");
         for (Runway runway : flight.getAirport().getRunways()) {
-            if (runway.getLandingFlight() != null) {
+            if (runway.getLandingFlight() != null && runway.getLandingFlight().getFlightType() != FlightType.EMERGENCY) {
                 trackedFlights.get(runway.getLandingFlight()).cancel(true);
             }
         }
